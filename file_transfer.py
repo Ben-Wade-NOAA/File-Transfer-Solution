@@ -42,8 +42,8 @@ class FileTransferClient:
             print("Error establishing Blob Service Client. Exiting.")
             exit(1)
         
-        self.__get_available_disk
-        self.__get_available_memory
+        self.__get_available_disk()
+        self.__get_available_memory()
     
     def __get_available_disk(self):
         
@@ -71,12 +71,14 @@ class FileTransferClient:
             exit(1)
         
         
-        
+
         self.__total_mem = memory_stats[0]/self.__to_gb
         self.__available_mem = memory_stats[1]/self.__to_gb
         self.__used_mem = memory_stats[3]/self.__to_gb
         self.__free_mem = memory_stats[4]/self.__to_gb
 
+        for datum in memory_stats:
+            print(datum)
     
     def __get_container_size(self, regex_key:str = None):
         size = 0.0
@@ -133,7 +135,9 @@ class FileTransferClient:
         local_file_list = [file_name for file_name in local_file_list if file_name not in self.__target_blobs]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
         
-
+        for file in local_file_list:
+            with open(file = os.path.join(self.__data_folder_path, file), mode = 'rb') as data:
+                blob_client = container_client.upload_blob(name = name, data = data, overwrite = False)
         pass
 
 
