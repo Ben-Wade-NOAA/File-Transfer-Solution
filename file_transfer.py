@@ -2,7 +2,7 @@ import os
 import psutil
 from sys import exit
 from azure.storage.blob import BlobClient, ContainerClient, BlobServiceClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, AzureCliCredential
 from azure.ai.ml import MLClient
 
 
@@ -11,15 +11,20 @@ from azure.ai.ml import MLClient
 class FileTransferClient:
     def __init__(self,
                  account_url:str = None, 
-                 contianer_name:str = None, 
-                 file_destination:str = './'):
+                 container_name:str = None, 
+                 local_folder:str = './',
+                 cloud_folder:str = None):
         self.__account_url = account_url
-        self.__container_name = contianer_name
-        self.__data_folder_path = file_destination
-        self.__target_blobs = []
+        self.__container_name = container_name
+        self.__local_folder_path = local_folder
+        if not os.path.exists(self.__local_folder_path):
+            print("Target directory does not yet exist. Making target directory")
+            os.mkdir(self.__local_folder_path)
+        self.__cloud_folder_path = cloud_folder
+        
         self.__to_gb = 1024.0**3
         try:
-            self.__creds = DefaultAzureCredential()
+            self.__creds = AzureCliCredential()
         except:
             print("Error establishing credentials. Exiting.")
             exit(1)
@@ -41,7 +46,11 @@ class FileTransferClient:
         except:
             print("Error establishing Blob Service Client. Exiting.")
             exit(1)
+        self.__container_client = self.__blob_service_client.get_container_client(self.__container_name)
+        self.__target_blobs = []
         
+        
+        self.__get_target_blob_list(key = self.__cloud_folder_path)
         self.__get_available_disk()
         self.__get_available_memory()
     
@@ -87,57 +96,71 @@ class FileTransferClient:
         
         return size
     
-    def __get_target_blob_list(self, regex_key:str = None, container_client:ContainerClient = None):
-        key = regex_key
-  
-        for name in container_client.list_blob_names():
-            if key in name:
-                self.__target_blobs.append(name)
-            else:
-                pass   
-        
-        
+    def __get_target_blob_list(self, key:str = None):
+        if self.__container_client:
+            container_client = self.__container_client
+            try:
+                for name in container_client.list_blob_names():
+                    if (key in name) and not ('.aml' in name):
+                        self.__target_blobs.append(name)
+                    else:
+                        pass   
+            except Exception as e:
+                print(e)
+                print('Sorry, no blobs found with that folder path in the chosen container')
+        else:
+            print("Somehow there is no container client active in the file transfer client")
     
-    def transfer_from_blob_to_compute(self, regex_key:str = None):
-        
-        key = regex_key
-               
-        creds = self.__creds
-        
+    def __strip_system_files(self, file_list)->list: 
+        for file in file_list:
+            print(file[0], print(file), print(file[0]=='.'))
+            if file[0]=='.':
+                file_list.remove(file)
+        return file_list
+    
+    def transfer_from_blob_to_compute(self):
+         
         blob_service_client = self.__blob_service_client
         container_client = blob_service_client.get_container_client(self.__container_name)
-        
-        self.__get_target_blob_list(self, regex_key= key, container_client= container_client)
+               
 
         if(len(self.__target_blobs)!=0):
             try:
                 for blob_name in self.__target_blobs:
                     cleaned_blob_name = blob_name.split('/')[-1]
+                    cleaned_blob_name = self.__strip_system_files(cleaned_blob_name)
                     with open(file = os.path.join(self.__data_folder_path, cleaned_blob_name), mode = 'wb') as download_file:
                         download_file.write(container_client.download_blob(blob_name).readall())
-            except:
-                print("Something went wrong with the file transfer from {self.__container_name} to {self.__data_folder_path}. Please check the logs and try again")
+            except Exception as e:
+                print(e)
+                print("Something went wrong with the file transfer from {} to {}. Please check the logs and try again".format(self.__container_name, self.__data_folder_path))
         else:
-            print("No blobs found containing the characters: {regex_key}")
+            print("No blobs found containing the characters: {}".format(self.__cloud_folder_path))
             
             
-    def upload_folder_to_blob(self, target_folder:str = None):
-        if(target_folder == None):
-            print("No target folder found. Using folder from object instantiation")
-            target_folder = self.__data_folder_path
+    def upload_folder_to_blob(self, source_folder:str, destination_folder:str = None):
+        if(destination_folder == None):
+            print("No destination folder found. Using folder from object instantiation")
+            destination_folder = self.__cloud_folder_path
         else:
-            target_folder = target_folder
+            destination_folder = destination_folder
         local_blob_client = self.__blob_service_client
         container_client = local_blob_client.get_container_client(container=self.__container_name)
         #get files in whatever directory you're trying to upload
-        local_file_list = os.listdir(target_folder)
+        local_file_list = os.listdir(source_folder)
         #strip out the files that were downloaded to begin with
-        local_file_list = [file_name for file_name in local_file_list if file_name not in self.__target_blobs]  #I hate this line of code but it's otherwise really inefficient      
+        local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.aml' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
+        print(source_folder)
+        print(local_file_list)
         
-        for file in local_file_list:
-            with open(file = os.path.join(self.__data_folder_path, file), mode = 'rb') as data:
-                blob_client = container_client.upload_blob(name = name, data = data, overwrite = False)
+       # local_file_list = self.__strip_system_files(local_file_list)
+        
+        for upload_file in local_file_list:
+            
+            with open(file = os.path.join(self.__local_folder_path, upload_file), mode = 'rb') as data:
+                print(os.path.join(destination_folder, upload_file))
+                blob_client = container_client.upload_blob(name = os.path.join(destination_folder, upload_file), data = data, overwrite = False)
         pass
 
 
