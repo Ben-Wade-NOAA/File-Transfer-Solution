@@ -62,6 +62,7 @@ class FileTransferClient:
         
         print("### This file transfer method uses Azure CLI Credentials. Please type 'az login' into the terminal to authenticate those credentials ### \n")
         print("\n This method will allow you to download a whole folder in a blob container and upload completed products to a folder in the same container. \n")
+        print("\n This object assumes that any file you have processed before uploading has had its name changed or exists in a different directory than its raw source data \n")
         print("\n If you need to upload or download to a different container, you'll need to make another client and handle those methods there by exchanging file paths.\n")
         print("\n If you find any logical errors or bugs, please email the author listed in the source code \n")
     
