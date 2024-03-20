@@ -49,8 +49,8 @@ class FileTransferClient:
         self.__container_client = self.__blob_service_client.get_container_client(self.__container_name)
         self.__target_blobs = []
         
-        
         self.__get_target_blob_list(key = self.__cloud_folder_path)
+        self.__container_size = self.__get_container_size()
         self.__get_available_disk()
         self.__get_available_memory()
     
@@ -89,12 +89,15 @@ class FileTransferClient:
         for datum in memory_stats:
             print(datum)
     
-    def __get_container_size(self, regex_key:str = None):
+    def __get_container_size(self)->float:
         size = 0.0
-        blob_service_client = self.__blob_service_client
-        container_client = blob_service_client.get_container_client(self.__container_name)
+        container_client = self.__container_client
+        for blob in self.__target_blobs:
+            blob_client = container_client.get_blob_client(blob)
+            size+= blob_client.get_blob_properties().size
         
-        return size
+        print('download size in bytes is {}'.format(size))
+        return size/self.__to_gb
     
     def __get_target_blob_list(self, key:str = None):
         if self.__container_client:
@@ -123,19 +126,21 @@ class FileTransferClient:
         blob_service_client = self.__blob_service_client
         container_client = blob_service_client.get_container_client(self.__container_name)
                
-
-        if(len(self.__target_blobs)!=0):
+        self.__get_available_disk()
+        self.__get_available_memory()
+        
+        if(len(self.__target_blobs)!=0)and(self.__free_disk>self.__container_size):
             try:
                 for blob_name in self.__target_blobs:
                     cleaned_blob_name = blob_name.split('/')[-1]
-                    cleaned_blob_name = self.__strip_system_files(cleaned_blob_name)
-                    with open(file = os.path.join(self.__data_folder_path, cleaned_blob_name), mode = 'wb') as download_file:
+                    #cleaned_blob_name = self.__strip_system_files(cleaned_blob_name)
+                    with open(file = os.path.join(self.__local_folder_path, cleaned_blob_name), mode = 'wb') as download_file:
                         download_file.write(container_client.download_blob(blob_name).readall())
             except Exception as e:
                 print(e)
-                print("Something went wrong with the file transfer from {} to {}. Please check the logs and try again".format(self.__container_name, self.__data_folder_path))
+                print("Something went wrong with the file transfer from {} to {}. Please check the logs and try again".format(self.__container_name, self.__local_folder_path))
         else:
-            print("No blobs found containing the characters: {}".format(self.__cloud_folder_path))
+            print("No blobs found containing the characters: {} or the size of the download exceeds the available disk on the compute target".format(self.__cloud_folder_path))
             
             
     def upload_folder_to_blob(self, source_folder:str, destination_folder:str = None):
@@ -149,7 +154,7 @@ class FileTransferClient:
         #get files in whatever directory you're trying to upload
         local_file_list = os.listdir(source_folder)
         #strip out the files that were downloaded to begin with
-        local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.aml' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
+        local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
         print(source_folder)
         print(local_file_list)
@@ -164,9 +169,3 @@ class FileTransferClient:
         pass
 
 
-'''
-transfer_from_blob_to_compute(account_url='https://nccoswsdevstor.blob.core.windows.net',
-                              container_name = 'azureml-blobstore-3135c7f3-1c7c-41b3-bf87-1a99aa567722',
-                              regex_key = 'UTC/DSC',
-                              file_destination='./Data')
-'''
