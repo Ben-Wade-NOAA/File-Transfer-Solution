@@ -1,3 +1,9 @@
+'''
+author: Ben Wade
+email: ben.wade@noaa.gov
+If I pooched it, let me know
+'''
+
 import os
 import psutil
 from sys import exit
@@ -70,6 +76,12 @@ class FileTransferClient:
         self.__container_size = self.__get_container_size()
         self.__get_available_disk()
         self.__get_available_memory()
+        
+        print("### This file transfer method uses Azure CLI Credentials. Please type 'az login' into the terminal to authenticate those credentials ### \n")
+        print("\n This method will allow you to download a whole folder in a blob container and upload completed products to a folder in the same container. \n")
+        print("\n This object assumes that any file you have processed before uploading has had its name changed or exists in a different directory than its raw source data \n")
+        print("\n If you need to upload or download to a different container, you'll need to make another client and handle those methods there by exchanging file paths.\n")
+        print("\n If you find any logical errors or bugs, please email the author listed in the source code \n")
         #endregion 
 
     #region testing functions            
@@ -209,6 +221,7 @@ class FileTransferClient:
         local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
         print(source_folder)
+        print(self.__target_blobs)
         print(local_file_list)
         
           
