@@ -220,9 +220,7 @@ class FileTransferClient:
         #strip out the files that were downloaded to begin with
         local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
-        print(source_folder)
-        print(self.__target_blobs)
-        print(local_file_list)
+        
         
           
         for upload_file in local_file_list:
@@ -230,6 +228,7 @@ class FileTransferClient:
             with open(file = os.path.join(self.__local_folder_path, upload_file), mode = 'rb') as data:
                 print(os.path.join(destination_folder, upload_file))
                 blob_client = container_client.upload_blob(name = os.path.join(destination_folder, upload_file), data = data, overwrite = False)
+        print("Upload Complete, please verify with Azure Storage Explorer")
     #endregion
 
 
