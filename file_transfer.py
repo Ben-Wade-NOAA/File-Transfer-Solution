@@ -113,7 +113,8 @@ class FileTransferClient:
         self.__total_disk /= self.__to_gb
         self.__used_disk /= self.__to_gb
         self.__free_disk /= self.__to_gb
-    
+        #helper
+        print(self.__free_disk)
     #gets available ram from the OS on the local compute
     def __get_available_memory(self):
         try:
@@ -128,7 +129,7 @@ class FileTransferClient:
         self.__available_mem = memory_stats[1]/self.__to_gb
         self.__used_mem = memory_stats[3]/self.__to_gb
         self.__free_mem = memory_stats[4]/self.__to_gb
-
+        print(self.__free_mem)
         
     #reads the size of the items to be downloaded from the cloud
     def __get_container_size(self)->float:
@@ -183,6 +184,10 @@ class FileTransferClient:
     #endregion
     
     #region transfer functions
+    #TODO timeout failsafe
+    #TODO all or nothing processes in try catch or cleanup partial downloads - or just retry the files that didn't make it
+    #TODO maybe add a data cap so that huge downloaded don't happen. if you have bigger file sizes, move to batchs
+    #TODO put a lock on fileshare/blobs when downloading
     def transfer_from_blob_to_compute(self):
         """Will transfer a folder and all its contents from a blob into the folder you specified when you created the object.\n
         The folder structure will be preserved, but currently cannot copy files from a folders that do not share the same parent directory."""
@@ -207,12 +212,17 @@ class FileTransferClient:
             print("No blobs found containing the characters: {} or the size of the download exceeds the available disk on the compute target".format(self.__cloud_folder_path))
             
             
-    def upload_folder_to_blob(self, source_folder:str, destination_folder:str = None):
+    def upload_folder_to_blob(self, source_folder:str = None, destination_folder:str = None):
         if(destination_folder == None):
             print("No destination folder found. Using folder from object instantiation")
             destination_folder = self.__cloud_folder_path
         else:
             destination_folder = destination_folder
+
+        if(source_folder ==None):
+            print("No source folder found, Using folder from Object inantiation")
+            source_folder = self.__local_folder_path
+
         local_blob_client = self.__blob_service_client
         container_client = local_blob_client.get_container_client(container=self.__container_name)
         #get files in whatever directory you're trying to upload
@@ -221,11 +231,13 @@ class FileTransferClient:
         local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
         
-        
+        print(local_file_list)
+        print(source_folder)
+        print(self.__local_folder_path)
           
         for upload_file in local_file_list:
             
-            with open(file = os.path.join(self.__local_folder_path, upload_file), mode = 'rb') as data:
+            with open(file = os.path.join(source_folder, upload_file), mode = 'rb') as data:
                 print(os.path.join(destination_folder, upload_file))
                 blob_client = container_client.upload_blob(name = os.path.join(destination_folder, upload_file), data = data, overwrite = False)
         print("Upload Complete, please verify with Azure Storage Explorer")
