@@ -10,6 +10,8 @@ from sys import exit
 from azure.storage.blob import BlobClient, ContainerClient, BlobServiceClient
 from azure.identity import DefaultAzureCredential, AzureCliCredential
 from azure.ai.ml import MLClient
+from azureml.fsspec.spec import AzureMachineLearningFileSystem
+
 
 
 
@@ -17,19 +19,36 @@ from azure.ai.ml import MLClient
 class FileTransferClient:
     #region init
     def __init__(self,
-                 account_url:str = None, 
+                 blob_uri:str = None,
+                 file_uri:str = None, 
                  container_name:str = None, 
                  local_folder:str = './',
                  cloud_folder:str = None
                  ):
-        """Account URL: https://<your storage account>.<'file' or 'blob' depending on type>.core.windows.net \n
-           Container Name: Name of the container who's parent directory is the storage account in azure storage explorer\n
+        """For Blobstore only: Blob URI: https://<your storage account>.<'blob'>.core.windows.net \n
+           For Fileshare only: File URI: copy the "Datastore URI" listed in the data asset page on ML Studio. begins with 'azureml://'
+           For Blobs Only, leave blank if using a fileshare: Container Name: Name of the container who's parent directory is the storage account in azure storage explorer\n
            Local Folder: Which folder you want to put these files in. Will be the root folder and cloud structure will be preserved\n
            Cloud Folder: Where the name of the folder you want to copy down from the cloud. All child folders will be copied with it\n"""
         #establish the local container variables
-        self.__account_url = account_url
+        self.__blob_uri = blob_uri
         self.__container_name = container_name
         self.__local_folder_path = local_folder
+        self.__blob_service_client = None
+        self.__container_client = None
+        
+        if(blob_uri!=None and file_uri!= None):
+            print("This tool is setup to only handle one blob or one fileshare at a time. Please remove one or the other and try again")
+            exit(1)
+        else:
+            if blob_uri!=None:
+                self.__dstore_type = 'blob'
+            elif file_uri!=None:
+                self.__dstore_type = 'file'
+            else:
+                print("there must be values provided to 'blob_uri' or 'file_uri'. Please enter a value for either variable and try again")
+                exit(1)
+        
         
         #make the destination folder
         if not os.path.exists(self.__local_folder_path):
@@ -41,7 +60,7 @@ class FileTransferClient:
         
         #try to create login credentials
         try:
-            self.__creds = AzureCliCredential()
+            self.__creds = DefaultAzureCredential()
         except Exception as e:
             print("The system encountered the following error: {} \n Error establishing credentials. Exiting.".format(e))
             exit(1)
@@ -54,36 +73,65 @@ class FileTransferClient:
             print("The system encountered the following error: {} \n Error establishing ML Client Obejct. Exiting.".format(e))
             exit(1)
         
-
-        #try to make a blob client
-        try:
-            self.__blob_service_client = BlobServiceClient(account_url = self.__account_url, credential=self.__creds)
-        except Exception as e:
-            print("The system encountered the following error: {} \n Error establishing Blob Service Client. Exiting.".format(e))
-            exit(1)
-        #try to make a container client
-        try:
-            self.__container_client = self.__blob_service_client.get_container_client(self.__container_name)
-        except Exception as e:
-            print("The system encountered the following error: {} \n Error establishing Container Client, could not find or create the sepcified container".format(e))
-            exit(1)
+        #if the storage container is a blobshare, we istantiate that stuff here
+        if self.__dstore_type =='blob':
+            #try to make a blob client
+            try:
+                self.__blob_service_client = BlobServiceClient(account_url = self.__blob_uri, credential=self.__creds)
+            except Exception as e:
+                print("The system encountered the following error: {} \n Error establishing Blob Service Client. Exiting.".format(e))
+                exit(1)
+            #try to make a container client
+            try:
+                self.__container_client = self.__blob_service_client.get_container_client(self.__container_name)
+            except Exception as e:
+                print("The system encountered the following error: {} \n Error establishing Container Client, could not find or create the sepcified container".format(e))
+                exit(1)
+                
+            self.__target_blobs = []
+            #get a list of all the blobs in that container
+            self.__get_target_blob_list(key = self.__cloud_folder_path)
             
-        self.__target_blobs = []
-        
-        self.__get_target_blob_list(key = self.__cloud_folder_path)
-        
+        #if the storage container is a fileshare, we instantiate the stuff here
+        elif self.__dstore_type == 'file':
+            try:
+                self.__azmlfs = AzureMachineLearningFileSystem(uri = file_uri)
+            except Exception as e:
+                print("The system encountered the following error: {} \n Error establishing Azure ML File System. Exiting.".format(e))
+                exit(1)
+            self.__target_files = self.__azmlfs.glob(cloud_folder+'*')
+            print(self.__target_files)
+        else:
+            self.__how_did_you_get_here()
 
         self.__container_size = self.__get_container_size()
         self.__get_available_disk()
         self.__get_available_memory()
-        
+        self.__print_instructions()
+
+        #endregion 
+    def __how_did_you_get_here(self):
+        print("You shouldn't be able to get to this print statement. Try restarting the kernal and reinstantiating this object")
+        exit(1)
+
+    def __print_instructions(self):
         print("### This file transfer method uses Azure CLI Credentials. Please type 'az login' into the terminal to authenticate those credentials ### \n")
         print("\n This method will allow you to download a whole folder in a blob container and upload completed products to a folder in the same container. \n")
         print("\n This object assumes that any file you have processed before uploading has had its name changed or exists in a different directory than its raw source data \n")
         print("\n If you need to upload or download to a different container, you'll need to make another client and handle those methods there by exchanging file paths.\n")
         print("\n If you find any logical errors or bugs, please email the author listed in the source code \n")
-        #endregion 
-
+        
+    def __blob_or_file(self)->bool:
+        dstore_type = None
+        if('.blob.' in self.__blob_uri):
+            dstore_type = 'blob'
+        elif('.file.' in self.__blob_uri):
+            dstore_type = 'file'
+        else:
+            dstore_type = 'invalid'
+        
+        return dstore_type
+    
     #region testing functions            
     #helper function to get blob names and folder structure
     def __print_blob_names(self):
@@ -134,10 +182,15 @@ class FileTransferClient:
     #reads the size of the items to be downloaded from the cloud
     def __get_container_size(self)->float:
         size = 0.0
-        container_client = self.__container_client
-        for blob in self.__target_blobs:
-            blob_client = container_client.get_blob_client(blob)
-            size+= blob_client.get_blob_properties().size
+        if(self.__dstore_type=='blob'):
+            container_client = self.__container_client
+            for blob in self.__target_blobs:
+                blob_client = container_client.get_blob_client(blob)
+                size+= blob_client.get_blob_properties().size
+        elif(self.__dstore_type=='file'):
+            pass
+        else:
+            self.__how_did_you_get_here()
         
         print('download size in bytes is {}'.format(size))
         return size/self.__to_gb
