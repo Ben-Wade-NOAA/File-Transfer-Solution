@@ -182,13 +182,16 @@ class FileTransferClient:
     #reads the size of the items to be downloaded from the cloud
     def __get_container_size(self)->float:
         size = 0.0
+        #if its a blob, use the blob properties dictionary to get the size
         if(self.__dstore_type=='blob'):
             container_client = self.__container_client
             for blob in self.__target_blobs:
                 blob_client = container_client.get_blob_client(blob)
                 size+= blob_client.get_blob_properties().size
+        #if its a file, use the fsspec sizes tool to get the sizes from the globs
         elif(self.__dstore_type=='file'):
-            pass
+            size = self.__azmlfs.sizes(paths = self.__target_files)
+        #if its something else, something has gone horribly wrong
         else:
             self.__how_did_you_get_here()
         
@@ -252,14 +255,23 @@ class FileTransferClient:
         
         if(len(self.__target_blobs)!=0)and(self.__free_disk>self.__container_size):#check to see if there's enough room on the local compute
             try:
+                #timeouts are limited to 2 minutes per mb max, so this sets the timeouts to max.
+                timeout = (self.__container_size/1000.0)*119
+                #a lease is blob talk for a lock. nobody can edit the files while its open
+                lease = container_client.aquire_lease(lease_duration = timeout)
                 self.__copy_folder_structure()#copies to the folder structure
                 for blob_name in self.__target_blobs:#loops through each blob
                     cleaned_blob_name = blob_name.split('/')#probably doesn't need to happen, but splits up by folders
-                    
-                    with open(file = os.path.join(self.__local_folder_path, *cleaned_blob_name), mode = 'wb') as download_file:
-                        download_file.write(container_client.download_blob(blob_name).readall())
+                    try:
+                        #download each blob 1x1
+                        with open(file = os.path.join(self.__local_folder_path, *cleaned_blob_name), mode = 'wb') as download_file:
+                            download_file.write(container_client.download_blob(blob_name).readall())
+                    except Exception as e:
+                        print(e)
+                #cleanup the lease and container client
+                lease.break_lease()
+                container_client.close()
             except Exception as e:
-                print(e)
                 print("Something went wrong with the file transfer from {} to {}. Please check the logs and try again".format(self.__container_name, self.__local_folder_path))
         else:
             print("No blobs found containing the characters: {} or the size of the download exceeds the available disk on the compute target".format(self.__cloud_folder_path))
@@ -287,13 +299,21 @@ class FileTransferClient:
         print(local_file_list)
         print(source_folder)
         print(self.__local_folder_path)
-          
-        for upload_file in local_file_list:
-            
-            with open(file = os.path.join(source_folder, upload_file), mode = 'rb') as data:
-                print(os.path.join(destination_folder, upload_file))
-                blob_client = container_client.upload_blob(name = os.path.join(destination_folder, upload_file), data = data, overwrite = False)
-        print("Upload Complete, please verify with Azure Storage Explorer")
+       
+        try:
+            #put a lock on the containers where this stuff is going
+            lease = container_client.lease(lease_timeout = -1)  
+            for upload_file in local_file_list:
+                
+                with open(file = os.path.join(source_folder, upload_file), mode = 'rb') as data:
+                    print(os.path.join(destination_folder, upload_file))
+                    blob_client = container_client.upload_blob(name = os.path.join(destination_folder, upload_file), data = data, overwrite = False)
+            print("Upload Complete, please verify with Azure Storage Explorer")
+            lease.break_lease()
+        except Exception as e:
+            print("an excpetion occurred, probably because another user is uploading to the same location. Please try again")
+
+        container_client.close()
     #endregion
 
 
