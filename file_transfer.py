@@ -99,7 +99,7 @@ class FileTransferClient:
             except Exception as e:
                 print("The system encountered the following error: {} \n Error establishing Azure ML File System. Exiting.".format(e))
                 exit(1)
-            self.__target_files = self.__azmlfs.glob(cloud_folder+'*')
+            self.__target_files = self.__get_target_file_list(key = self.__cloud_folder_path)
             print(self.__target_files)
         else:
             self.__how_did_you_get_here()
@@ -218,6 +218,21 @@ class FileTransferClient:
         else:
             print("Somehow there is no container client active in the file transfer client")
     
+    def __get_target_file_list(self, key:str = None):
+        
+        if self.__azmlfs:
+            try:
+                buffer = self.__azmlfs.glob(key+'*')
+                for name in buffer:
+                    if(key in name) and not ('.aml' in name):
+                        self.__target_files.append(name)
+                    else:
+                        pass
+            except Exception as e:
+                print(e)
+                print('Sorry, no files found with that folder path in the chosen data asset')
+        else:
+            self.__how_did_you_get_here()
 
     #takes the folder structure of the target blobs and copies it to the local compute cluster    
     def __copy_folder_structure(self):
@@ -242,11 +257,43 @@ class FileTransferClient:
     #endregion
     
     #region transfer functions
+    
+    #these two functions call the correct upload and download functions
+    #based on the storage account type
+    def get_cloud_folder(self):
+        if self.__blob_or_file == 'blob':
+            self.__transfer_from_blob_to_compute()
+        elif self.__blob_or_file == 'file':
+            self.__transfer_from_file_to_compute()
+        else:
+            self.__how_did_you_get_here()
+    
+    def put_local_folder(self, source_folder:str = None, destination_folder:str = None):
+        #these next few lines just make sure to handle using the original folders from the object
+        #but you can send these files to whichever folder you want
+        if(destination_folder == None):
+            print("No destination folder found. Using folder from object instantiation")
+            destination_folder = self.__cloud_folder_path
+        else:
+            destination_folder = destination_folder
+
+        if(source_folder ==None):
+            print("No source folder found, Using folder from Object inantiation")
+            source_folder = self.__local_folder_path
+        
+        if self.__blob_or_file == 'blob':
+            self.__upload_folder_to_blob(source_folder= source_folder, destination_folder= destination_folder)
+        elif self.__blob_or_file=='file':
+            self.__upload_folder_to_file(source_folder = source_folder, destination_folder = destination_folder)
+        else:
+            self.__how_did_you_get_here()
+            
+    #region blobs
     #TODO timeout failsafe
     #TODO all or nothing processes in try catch or cleanup partial downloads - or just retry the files that didn't make it
     #TODO maybe add a data cap so that huge downloaded don't happen. if you have bigger file sizes, move to batchs
     #TODO put a lock on fileshare/blobs when downloading
-    def transfer_from_blob_to_compute(self):
+    def __transfer_from_blob_to_compute(self):
         """Will transfer a folder and all its contents from a blob into the folder you specified when you created the object.\n
         The folder structure will be preserved, but currently cannot copy files from a folders that do not share the same parent directory."""
         blob_service_client = self.__blob_service_client
@@ -278,18 +325,9 @@ class FileTransferClient:
         else:
             print("No blobs found containing the characters: {} or the size of the download exceeds the available disk on the compute target".format(self.__cloud_folder_path))
             
-            
-    def upload_folder_to_blob(self, source_folder:str = None, destination_folder:str = None):
-        if(destination_folder == None):
-            print("No destination folder found. Using folder from object instantiation")
-            destination_folder = self.__cloud_folder_path
-        else:
-            destination_folder = destination_folder
-
-        if(source_folder ==None):
-            print("No source folder found, Using folder from Object inantiation")
-            source_folder = self.__local_folder_path
-
+    #helper function handles setting the source and destination folders correctly        
+    def __upload_folder_to_blob(self, source_folder:str = None, destination_folder:str = None):
+        #get the right clients
         local_blob_client = self.__blob_service_client
         container_client = local_blob_client.get_container_client(container=self.__container_name)
         #get files in whatever directory you're trying to upload
@@ -318,4 +356,16 @@ class FileTransferClient:
         container_client.close()
     #endregion
 
+    #region files
+    #TODO timeout failsafe
+    #TODO all or nothing processes in try catch or cleanup partial downloads - or just retry the files that didn't make it
+    #TODO maybe add a data cap so that huge downloaded don't happen. if you have bigger file sizes, move to batchs
+    #TODO put a lock on fileshare/blobs when downloading
+    def __transfer_from_file_to_compute(self):
+        pass
+    
+    def __upload_folder_to_file(self, source_folder:str = None, destination_folder:str = None):
+        pass
+    #endregion
+    #endregion
 
