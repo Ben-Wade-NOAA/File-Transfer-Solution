@@ -164,6 +164,8 @@ class FileTransferClient:
         #helper
         print(self.__free_disk)
     #gets available ram from the OS on the local compute
+    #here's a staged change
+    
     def __get_available_memory(self):
         try:
             memory_stats = psutil.virtual_memory()
