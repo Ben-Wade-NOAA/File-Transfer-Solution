@@ -362,10 +362,56 @@ class FileTransferClient:
     #TODO maybe add a data cap so that huge downloaded don't happen. if you have bigger file sizes, move to batchs
     #TODO put a lock on fileshare/blobs when downloading
     def __transfer_from_file_to_compute(self):
+        self.__get_available_disk()
+        self.__get_available_memory()
+
+        if(len(self.__target_files)!=0) and (self.__free_disk>self.__container_size):
+            try:
+                self.__azmlfs.start_tranaction()
+                for path in self.__target_files:
+                    try:
+                        self.__azmlfs.get_file(rpath = path, lpath= self.__local_folder_path)
+                    except Exception as e:
+                        print(e)
+                self.__azmlfs.close_transaction()
+
+            except Exception as e:
+                print("Something went wrong with the file transfer from {} to {}. Please check the logs and try again".format(self.__container_name, self.__local_folder_path))
+        else:
+            print("No files found containing the characters: {} or the size of the download exceeds the available disk on the compute target".format(self.__cloud_folder_path))
+        
         pass
     
     def __upload_folder_to_file(self, source_folder:str = None, destination_folder:str = None):
-        pass
+        
+        
+        local_file_list = os.listdir(source_folder)
+        #strip out the files that were downloaded to begin with
+        local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
+        #upload the files that are left using the container client
+        
+        print(local_file_list)
+        print(source_folder)
+        print(self.__local_folder_path)
+       
+        try:
+            fail_list = []
+            self.__azmlfs.start_transaction()
+            for upload_file in local_file_list:
+                try:
+                    self.__azmlfs.put_file(lpath = upload_file, rpath = destination_folder)
+                except Exception as e:
+                    print(e)
+                    fail_list.append(upload_file)
+            self.__azmlfs.end_transaction()
+            if(len(fail_list!=0)):
+                print("Error, the following files could not be uploaded. Please try again")
+                for file in fail_list:
+                    print(file)
+            print("Upload Complete, please verify with Azure Storage Explorer")
+            
+        except Exception as e:
+            print("an excpetion occurred, probably because another user is uploading to the same location. Please try again")
+            self.__azmlfs.end_transaction()
     #endregion
     #endregion
-
