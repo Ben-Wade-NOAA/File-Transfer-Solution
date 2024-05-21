@@ -316,7 +316,7 @@ class FileTransferClient:
         The folder structure will be preserved, but currently cannot copy files from a folders that do not share the same parent directory."""
         blob_service_client = self.__blob_service_client
         container_client = blob_service_client.get_container_client(self.__container_name)
-        print('__transfer from blob to compute')       
+     
         self.__get_available_disk()
         self.__get_available_memory()
         
@@ -355,14 +355,10 @@ class FileTransferClient:
         container_client = local_blob_client.get_container_client(container=self.__container_name)
         #get files in whatever directory you're trying to upload
         local_file_list = os.listdir(source_folder)
-        print("before processing: ", local_file_list)
+
         #strip out the files that were downloaded to begin with
         local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
-        
-        print(local_file_list)
-        print(source_folder)
-        print(self.__local_folder_path)
 
         try:
             #put a lock on the containers where this stuff is going
@@ -371,7 +367,6 @@ class FileTransferClient:
                 
                 blob_client = container_client.get_blob_client(blob = os.path.join(destination_folder, upload_file))
                 is_old_blob = blob_client.exists()
-                print("is old blob: "+str(is_old_blob))
                 if is_old_blob:
                     print("A blob with the provided name exists. The name is being changed to prevent data loss")
                     updated_upload_file = self.__change_upload_file_name(upload_file=upload_file)
@@ -380,13 +375,10 @@ class FileTransferClient:
                     updated_upload_file = upload_file
                 
                 with open(file = os.path.join(source_folder, upload_file), mode = 'rb') as data:
-                    print(type(data))
-                    print(os.path.join(destination_folder, upload_file))
                     blob_client = container_client.upload_blob(name = os.path.join(destination_folder, updated_upload_file), data = data, overwrite = False)
             print("Upload Complete, please verify with Azure Storage Explorer")
 
         except Exception as e:
-            print(e)
             print("an exception occurred, probably because another user is uploading to the same location. Please try again")
         container_client.close()
       
