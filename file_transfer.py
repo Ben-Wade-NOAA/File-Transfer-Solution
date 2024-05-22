@@ -100,8 +100,9 @@ class FileTransferClient:
             except Exception as e:
                 print("The system encountered the following error: {} \n Error establishing Azure ML File System. Exiting.".format(e))
                 exit(1)
-            self.__target_files = self.__get_target_file_list(key = self.__cloud_folder_path)
-            print(self.__target_files)
+            self.__target_files = []
+            self.__get_target_file_list(key = self.__cloud_folder_path)
+
         else:
             self.__how_did_you_get_here()
 
@@ -140,6 +141,11 @@ class FileTransferClient:
         if(self.__target_blobs):
             for x in range(0, len(self.__target_blobs)):
                 print(self.__target_blobs[x])
+                
+    def print_file_names(self):
+        if(self.__target_files):
+            for x in range(0, len(self.__target_files)):
+                print(self.__target_files[x])
                 
     def __try_copy(self):
         self.__copy_folder_structure()
@@ -208,7 +214,6 @@ class FileTransferClient:
     def __get_target_blob_list(self, key:str = None):
         if self.__container_client:
             container_client = self.__container_client
-            print(container_client.list_blob_names())
             try:
                 for name in container_client.list_blob_names():
                     if (key in name) and not ('.aml' in name):
@@ -230,6 +235,7 @@ class FileTransferClient:
                     if(key in name) and not ('.aml' in name):
                         self.__target_files.append(name)
                     else:
+                        print("pass")
                         pass
             except Exception as e:
                 print(e)
@@ -259,14 +265,21 @@ class FileTransferClient:
                 file_list.remove(file)
         return file_list
     
+    
+    #in case the file already exists, this appends a timestamp to the filename so it won't overwrite anything
     def __change_upload_file_name(self, upload_file:str)->str:
         print("WARNING: This tool cannot overwrite any existing data in the cloud.")
         print("The filename has been updated with the current time to avoid data loss in the cloud")
-        now = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-        upload_file = upload_file.split('.')
-        extension = upload_file[-1]
-        filename = upload_file[0]+now
+        now = datetime.now().strftime('-edited-%Y-%m-%d-%H-%M-%S')
+        
+        split_path = upload_file.split('.')
+        extension = split_path[-1]
+        filename = split_path[0]+now
+        local_filename = os.path.join(self.__local_folder_path, *[self.__cloud_folder_path, upload_file])
         upload_file = filename+'.'+extension
+        new_filename = os.path.join(self.__local_folder_path, *[self.__cloud_folder_path, upload_file])
+        if self.__dstore_type=='file':
+            os.rename(os.path.join(local_filename), os.path.join(new_filename))
         print("New File name: "+upload_file)
         return upload_file
     #endregion
@@ -283,8 +296,7 @@ class FileTransferClient:
         elif self.__dstore_type == 'file':
             self.__transfer_from_file_to_compute()
         else:
-            print('how did you get here get_cloud_folder')
-            self.__how_did_you_get_here()
+             self.__how_did_you_get_here()
     
     def put_local_folder(self, source_folder:str = None, destination_folder:str = None):
         #these next few lines just make sure to handle using the original folders from the object
@@ -410,37 +422,46 @@ class FileTransferClient:
         else:
             print("No files found containing the characters: {} or the size of the download exceeds the available disk on the compute target".format(self.__cloud_folder_path))
         
-        pass
+        
     
     def __upload_folder_to_file(self, source_folder:str = None, destination_folder:str = None):
         
         
         local_file_list = os.listdir(source_folder)
         #strip out the files that were downloaded to begin with
-        local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
+        local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_files) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
-        
-        print(local_file_list)
-        print(source_folder)
-        print(self.__local_folder_path)
        
         try:
             fail_list = []
             self.__azmlfs.start_transaction()
             for upload_file in local_file_list:
+                is_existing_file = self.__azmlfs.isfile(os.path.join(destination_folder, upload_file))
+                if is_existing_file:
+                    print("A file with the provided name exists. The name is being changed to prevent data loss")
+                    updated_upload_file = self.__change_upload_file_name(upload_file=upload_file)
+                elif '-editied-' in upload_file:
+                    print("It looks like the system has already renamed this file. Please change the name of {} and try again.".format(upload_file))
+                    exit(1)
+                else:
+                    updated_upload_file = upload_file    
                 try:
-                    self.__azmlfs.put_file(lpath = upload_file, rpath = destination_folder)
+                    full_local_path = os.path.join(source_folder, updated_upload_file)
+                    full_dest_path = os.path.join(destination_folder, updated_upload_file)
+                    self.__azmlfs.put_file(lpath = full_local_path, rpath = full_dest_path)
                 except Exception as e:
                     print(e)
-                    fail_list.append(upload_file)
+                    fail_list.append(updated_upload_file)
             self.__azmlfs.end_transaction()
-            if(len(fail_list!=0)):
-                print("Error, the following files could not be uploaded. Please try again")
+            if(len(fail_list)!=0):
+                print("Encountered an error during uploda. The following files could not be uploaded. Please try again")
                 for file in fail_list:
                     print(file)
-            print("Upload Complete, please verify with Azure Storage Explorer")
+            else:
+                print("Upload Complete, please verify with Azure Storage Explorer")
             
         except Exception as e:
+            print(e)
             print("an exception occurred, probably because another user is uploading to the same location. Please try again")
             self.__azmlfs.end_transaction()
     #endregion
