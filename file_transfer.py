@@ -271,7 +271,7 @@ class FileTransferClient:
         print("WARNING: This tool cannot overwrite any existing data in the cloud.")
         print("The filename has been updated with the current time to avoid data loss in the cloud")
         now = datetime.now().strftime('-edited-%Y-%m-%d-%H-%M-%S')
-        
+        #There has to be a more condensed way to do this, but I'm kinda at the end of my rope here and I don't want to think too hard.
         split_path = upload_file.split('.')
         extension = split_path[-1]
         filename = split_path[0]+now
