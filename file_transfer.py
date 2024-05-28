@@ -201,6 +201,7 @@ class FileTransferClient:
         #if its a file, use the fsspec sizes tool to get the sizes from the globs
         elif(self.__dstore_type=='file'):
             size = self.__azmlfs.sizes(paths = self.__target_files)
+            size = sum(size)
         #if its something else, something has gone horribly wrong
         else:
             self.__how_did_you_get_here()
