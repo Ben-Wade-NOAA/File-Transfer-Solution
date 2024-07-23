@@ -61,14 +61,18 @@ class FileTransferClient:
         
         #try to create login credentials
         try:
-            self.__creds = DefaultAzureCredential()
+            print("azure cli creds")
+            self.__creds = AzureCliCredential()
+            print("got creds")
         except Exception as e:
             print("The system encountered the following error: {} \n Error establishing credentials. Exiting.".format(e))
             exit(1)
         
         #try to create an as-of-yet unused ML Client
         try:
+            print("ml client")
             self.__ml_client = MLClient.from_config(credential=self.__creds)
+            print('got client')
         except Exception as e:
             
             print("The system encountered the following error: {} \n Error establishing ML Client Obejct. Exiting.".format(e))
@@ -96,7 +100,9 @@ class FileTransferClient:
         #if the storage container is a fileshare, we instantiate the stuff here
         elif self.__dstore_type == 'file':
             try:
+                print("azmlfs")
                 self.__azmlfs = AzureMachineLearningFileSystem(uri = file_uri)
+                print("got azmlfs")
             except Exception as e:
                 print("The system encountered the following error: {} \n Error establishing Azure ML File System. Exiting.".format(e))
                 exit(1)
@@ -106,9 +112,13 @@ class FileTransferClient:
         else:
             self.__how_did_you_get_here()
 
+        print("container")
         self.__container_size = self.__get_container_size()
+        print("disc")
         self.__get_available_disk()
+        print("mem")
         self.__get_available_memory()
+        print("instructions")
         self.__print_instructions()
 
         #endregion 
@@ -206,8 +216,9 @@ class FileTransferClient:
         else:
             self.__how_did_you_get_here()
         
-        print('download size in bytes is {}'.format(size))
-        return size/self.__to_gb
+        size = size/self.__to_gb
+        print('download size in gb is {}'.format(size))
+        return size
     
     #endregion
     
@@ -309,7 +320,7 @@ class FileTransferClient:
             destination_folder = destination_folder
 
         if(source_folder ==None):
-            print("No source folder found, Using folder from Object inantiation")
+            print("No source folder found, Using folder from Object instantiation")
             source_folder = self.__local_folder_path+'/'+self.__cloud_folder_path
         
         if self.__dstore_type == 'blob':
@@ -368,7 +379,8 @@ class FileTransferClient:
         container_client = local_blob_client.get_container_client(container=self.__container_name)
         #get files in whatever directory you're trying to upload
         local_file_list = os.listdir(source_folder)
-
+        print(source_folder)
+        print(local_file_list)
         #strip out the files that were downloaded to begin with
         local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
@@ -377,8 +389,13 @@ class FileTransferClient:
             #put a lock on the containers where this stuff is going
         #    lease = container_client.lease(lease_timeout = -1)  
             for upload_file in local_file_list:
-                
+                print(local_file_list)
                 blob_client = container_client.get_blob_client(blob = os.path.join(destination_folder, upload_file))
+                print(container_client.account_name, container_client.container_name)
+                print(os.path.join(destination_folder, upload_file))
+                test_client = container_client.get_blob_client(blob = "UI/2024-02-22_200913_UTC/input/")
+                print(test_client.exists())
+                print(blob_client.exists())
                 is_old_blob = blob_client.exists()
                 if is_old_blob:
                     print("A blob with the provided name exists. The name is being changed to prevent data loss")
@@ -392,6 +409,7 @@ class FileTransferClient:
             print("Upload Complete, please verify with Azure Storage Explorer")
 
         except Exception as e:
+            print(e)
             print("an exception occurred, probably because another user is uploading to the same location. Please try again")
         container_client.close()
       
