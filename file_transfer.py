@@ -20,11 +20,8 @@ from datetime import datetime
 class FileTransferClient:
     #region init
     def __init__(self,
-                 blob_uri:str = None,
-                 file_uri:str = None, 
-                 container_name:str = None, 
-                 local_folder:str = './',
-                 cloud_folder:str = None
+                 input_uri:str = None,
+                 local_folder:str = None
                  ):
         """For Blobstore only: Blob URI: https://<your storage account>.<'blob'>.core.windows.net \n
            For Fileshare only: File URI: copy the "Datastore URI" listed in the data asset page on ML Studio. begins with 'azureml://'
@@ -32,23 +29,17 @@ class FileTransferClient:
            Local Folder: Which folder you want to put these files in. Will be the root folder and cloud structure will be preserved\n
            Cloud Folder: Where the name of the folder you want to copy down from the cloud. All child folders will be copied with it\n"""
         #establish the local container variables
-        self.__blob_uri = blob_uri
-        self.__container_name = container_name
+        self.__input_uri = input_uri
+        self.__blob_uri = None
+        self.__file_uri = None
+        self.__container_name = None
         self.__local_folder_path = local_folder
         self.__blob_service_client = None
         self.__container_client = None
-        
-        if(blob_uri!=None and file_uri!= None):
-            print("This tool is setup to only handle one blob or one fileshare at a time. Please remove one or the other and try again")
-            exit(1)
-        else:
-            if blob_uri!=None:
-                self.__dstore_type = 'blob'
-            elif file_uri!=None:
-                self.__dstore_type = 'file'
-            else:
-                print("there must be values provided to 'blob_uri' or 'file_uri'. Please enter a value for either variable and try again")
-                exit(1)
+        self.__dstore_type = None
+        self.__cloud_folder_path = None
+
+        self.__uri_parser(self.__input_uri)
         
         
         #make the destination folder
@@ -56,32 +47,31 @@ class FileTransferClient:
             print("Target directory does not yet exist. Making target directory")
             os.mkdir(self.__local_folder_path)
         
-        self.__cloud_folder_path = cloud_folder
+        
         self.__to_gb = 1024.0**3
         
         #try to create login credentials
         try:
-            print("azure cli creds")
             self.__creds = AzureCliCredential()
-            print("got creds")
         except Exception as e:
             print("The system encountered the following error: {} \n Error establishing credentials. Exiting.".format(e))
             exit(1)
         
         #try to create an as-of-yet unused ML Client
         try:
-            print("ml client")
             self.__ml_client = MLClient.from_config(credential=self.__creds)
-            print('got client')
         except Exception as e:
             
             print("The system encountered the following error: {} \n Error establishing ML Client Obejct. Exiting.".format(e))
             exit(1)
         
         #if the storage container is a blobshare, we istantiate that stuff here
-        if self.__dstore_type =='blob':
+        print('blob check')
+        print(self.__blob_uri, self.__container_name, self.__cloud_folder_path)
+        if (self.__dstore_type =='blob') and (self.__blob_uri!=None) and (self.__container_name!=None) and (self.__cloud_folder_path!=None):
             #try to make a blob client
             try:
+                print("inside blobs")
                 self.__blob_service_client = BlobServiceClient(account_url = self.__blob_uri, credential=self.__creds)
             except Exception as e:
                 print("The system encountered the following error: {} \n Error establishing Blob Service Client. Exiting.".format(e))
@@ -98,11 +88,9 @@ class FileTransferClient:
             self.__get_target_blob_list(key = self.__cloud_folder_path)
             
         #if the storage container is a fileshare, we instantiate the stuff here
-        elif self.__dstore_type == 'file':
+        elif (self.__dstore_type == 'file') and (self.__file_uri!=None) and (self.__cloud_folder_path!=None):
             try:
-                print("azmlfs")
-                self.__azmlfs = AzureMachineLearningFileSystem(uri = file_uri)
-                print("got azmlfs")
+                self.__azmlfs = AzureMachineLearningFileSystem(uri = self.__file_uri)
             except Exception as e:
                 print("The system encountered the following error: {} \n Error establishing Azure ML File System. Exiting.".format(e))
                 exit(1)
@@ -110,6 +98,7 @@ class FileTransferClient:
             self.__get_target_file_list(key = self.__cloud_folder_path)
 
         else:
+            print("blob/file logic failed")
             self.__how_did_you_get_here()
 
         print("container")
@@ -128,10 +117,11 @@ class FileTransferClient:
 
     def __print_instructions(self):
         print("### This file transfer method uses Azure CLI Credentials. Please type 'az login' into the terminal to authenticate those credentials ### \n")
-        print("\n This method will allow you to download a whole folder in a blob container and upload completed products to a folder in the same container. \n")
+        print("\n This method will allow you to download a whole folder in a blob or file container and upload completed products to a folder in the same container. \n")
         print("\n This object assumes that any file you have processed before uploading has had its name changed or exists in a different directory than its raw source data \n")
         print("\n If you need to upload or download to a different container, you'll need to make another client and handle those methods there by exchanging file paths.\n")
-        print("\n If you find any logical errors or bugs, please email the author listed in the source code \n")
+        print("\n All SDK Items needed to transfer the files have been established. to download the files, please use the 'get_cloud_folder()' method \n To upload files, please use the 'put_local_folder()' method")
+        
         
     def __blob_or_file(self)->bool:
         dstore_type = None
@@ -143,6 +133,36 @@ class FileTransferClient:
             dstore_type = 'invalid'
         
         return dstore_type
+    
+    def __parse_blob(self, input_uri:str):
+        print("inside blobs")
+        split_path = input_uri.split('/')
+        self.__blob_uri = split_path[0]+"//"+split_path[2]
+        self.__container_name = split_path[3]
+        self.__cloud_folder_path = '/'.join(split_path[4:])
+
+
+    def __parse_file(self, input_uri:str):
+        split_path = input_uri.partition('paths')
+        self.__file_uri = split_path[0][:-1]
+        self.__cloud_folder_path = split_path[2][1:]
+   
+    
+
+    def __uri_parser(self, input_uri:str = None):
+        blob = "blob" in input_uri
+        file = ("fileshare" in input_uri) or ("file.core" in input_uri)
+        if file and blob:
+            print("Can't parse whether given uri is a path to a blob or file, please edit the names of folders in the path to remove the words 'fileshare', 'file.core', or 'blob' and try again")
+            exit(1)
+        elif blob:
+            self.__dstore_type = "blob"
+            self.__parse_blob(input_uri)
+        elif file:
+            self.__dstore_type = "file"
+            self.__parse_file(input_uri)
+
+        
     
     #region testing functions            
     #helper function to get blob names and folder structure
@@ -156,7 +176,7 @@ class FileTransferClient:
         if(self.__target_files):
             for x in range(0, len(self.__target_files)):
                 print(self.__target_files[x])
-                
+
     def __try_copy(self):
         self.__copy_folder_structure()
     #endregion
