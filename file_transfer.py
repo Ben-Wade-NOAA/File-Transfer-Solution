@@ -52,7 +52,7 @@ class FileTransferClient:
         
         #try to create login credentials
         try:
-            self.__creds = AzureCliCredential()
+            self.__creds = DefaultAzureCredential()
         except Exception as e:
             print("The system encountered the following error: {} \n Error establishing credentials. Exiting.".format(e))
             exit(1)
@@ -66,12 +66,12 @@ class FileTransferClient:
             exit(1)
         
         #if the storage container is a blobshare, we istantiate that stuff here
-        print('blob check')
-        print(self.__blob_uri, self.__container_name, self.__cloud_folder_path)
+        
+        
         if (self.__dstore_type =='blob') and (self.__blob_uri!=None) and (self.__container_name!=None) and (self.__cloud_folder_path!=None):
             #try to make a blob client
             try:
-                print("inside blobs")
+                
                 self.__blob_service_client = BlobServiceClient(account_url = self.__blob_uri, credential=self.__creds)
             except Exception as e:
                 print("The system encountered the following error: {} \n Error establishing Blob Service Client. Exiting.".format(e))
@@ -101,13 +101,13 @@ class FileTransferClient:
             print("blob/file logic failed")
             self.__how_did_you_get_here()
 
-        print("container")
+        
         self.__container_size = self.__get_container_size()
-        print("disc")
+       
         self.__get_available_disk()
-        print("mem")
+        
         self.__get_available_memory()
-        print("instructions")
+       
         self.__print_instructions()
 
         #endregion 
@@ -135,7 +135,7 @@ class FileTransferClient:
         return dstore_type
     
     def __parse_blob(self, input_uri:str):
-        print("inside blobs")
+        
         split_path = input_uri.split('/')
         self.__blob_uri = split_path[0]+"//"+split_path[2]
         self.__container_name = split_path[3]
@@ -167,7 +167,7 @@ class FileTransferClient:
     #region testing functions            
     #helper function to get blob names and folder structure
     def print_blob_names(self):
-        print(self.__target_blobs)
+        
         if(self.__target_blobs):
             for x in range(0, len(self.__target_blobs)):
                 print(self.__target_blobs[x])
@@ -267,7 +267,7 @@ class FileTransferClient:
                     if(key in name) and not ('.aml' in name):
                         self.__target_files.append(name)
                     else:
-                        print("pass")
+                        
                         pass
             except Exception as e:
                 print(e)
@@ -277,7 +277,7 @@ class FileTransferClient:
 
     #takes the folder structure of the target blobs and copies it to the local compute cluster    
     def __copy_folder_structure(self):
-        print('copy folder structure')
+        
         if len(self.__target_blobs)>0:
             working_list = self.__target_blobs
             num_items = len(working_list)
@@ -292,7 +292,7 @@ class FileTransferClient:
     #tries to trip out the .aml files from upload, but doesn't work for some reasion
     def __strip_system_files(self, file_list)->list: 
         for file in file_list:
-            print(file[0], print(file), print(file[0]=='.'))
+            
             if file[0]=='.':
                 file_list.remove(file)
         return file_list
@@ -323,7 +323,7 @@ class FileTransferClient:
     #based on the storage account type
     def get_cloud_folder(self):
         if self.__dstore_type == 'blob':
-            print('blob-transfer function')
+            
             self.__transfer_from_blob_to_compute()
         elif self.__dstore_type == 'file':
             self.__transfer_from_file_to_compute()
@@ -373,7 +373,7 @@ class FileTransferClient:
                 for blob_name in self.__target_blobs:#loops through each blob
 
                     blob_client = container_client.get_blob_client(blob = blob_name)
-                    print(blob_client.exists())
+                    
                     cleaned_blob_name = blob_name.split('/')#probably doesn't need to happen, but splits up by folders
 
                     try:
@@ -399,8 +399,7 @@ class FileTransferClient:
         container_client = local_blob_client.get_container_client(container=self.__container_name)
         #get files in whatever directory you're trying to upload
         local_file_list = os.listdir(source_folder)
-        print(source_folder)
-        print(local_file_list)
+        
         #strip out the files that were downloaded to begin with
         local_file_list = [file_name for file_name in local_file_list if (file_name not in self.__target_blobs) and not ('.amlignore' in file_name)]  #I hate this line of code but it's otherwise really inefficient      
         #upload the files that are left using the container client
@@ -409,13 +408,12 @@ class FileTransferClient:
             #put a lock on the containers where this stuff is going
         #    lease = container_client.lease(lease_timeout = -1)  
             for upload_file in local_file_list:
-                print(local_file_list)
+                
                 blob_client = container_client.get_blob_client(blob = os.path.join(destination_folder, upload_file))
-                print(container_client.account_name, container_client.container_name)
-                print(os.path.join(destination_folder, upload_file))
+                
+                
                 test_client = container_client.get_blob_client(blob = "UI/2024-02-22_200913_UTC/input/")
-                print(test_client.exists())
-                print(blob_client.exists())
+              
                 is_old_blob = blob_client.exists()
                 if is_old_blob:
                     print("A blob with the provided name exists. The name is being changed to prevent data loss")
