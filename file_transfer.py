@@ -45,7 +45,7 @@ class FileTransferClient:
         #make the destination folder
         if not os.path.exists(self.__local_folder_path):
             print("Target directory does not yet exist. Making target directory")
-            os.mkdir(self.__local_folder_path)
+            os.makedirs(self.__local_folder_path)
         
         
         self.__to_gb = 1024.0**3
