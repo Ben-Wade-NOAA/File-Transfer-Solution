@@ -161,6 +161,7 @@ class FileTransferClient:
                 print("Look like you pulled the 'DataStore URI' instead of the 'Storage URI'")
                 print("Azure has a lot of security related eccentricities. When pulling data from blobs")
                 print("please take care to use the 'Storage URI' that begins with 'https://<storage account>.blob.core.windows.net'.")
+                print("PATH = "+input_uri)
                 exit(1)
             self.__dstore_type = "blob"
             self.__parse_blob(input_uri)
@@ -171,6 +172,7 @@ class FileTransferClient:
                 print("please take care to use the 'Datastore URI' that begins with 'azureml://subscriptions'.")
                 print("You can find that URI under the 'Data->datastores-><your fileshare>->browse page in")
                 print("azure machine learning studio")
+                print("PATH = "+ input_uri)
                 exit(1)
             self.__dstore_type = "file"
             self.__parse_file(input_uri)
