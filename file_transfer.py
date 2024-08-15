@@ -135,11 +135,15 @@ class FileTransferClient:
         return dstore_type
     
     def __parse_blob(self, input_uri:str):
-        
-        split_path = input_uri.split('/')
-        self.__blob_uri = split_path[0]+"//"+split_path[2]
-        self.__container_name = split_path[3]
-        self.__cloud_folder_path = '/'.join(split_path[4:])
+        if('azureml' in input_uri):
+            print("Look like you pulled the 'DataStore URI' instead of the 'Storage URI'")
+            print("Azure has a lot of security related eccentricities. When pulling data from blobs")
+            print("please take care to use the 'Storage URI' that begins with 'https://<storage account>.blob.core.windows.net'.")
+        elif('https://' in input_uri):
+            split_path = input_uri.split('/')
+            self.__blob_uri = split_path[0]+"//"+split_path[2]
+            self.__container_name = split_path[3]
+            self.__cloud_folder_path = '/'.join(split_path[4:])
 
 
     def __parse_file(self, input_uri:str):
@@ -159,6 +163,12 @@ class FileTransferClient:
             self.__dstore_type = "blob"
             self.__parse_blob(input_uri)
         elif file:
+            if("https://" in input_uri):
+                print("Look like you pulled the 'DataStore URI' instead of the 'Storage URI'")
+                print("Azure has a lot of security related eccentricities. When pulling data from fileshares")
+                print("please take care to use the 'Datastore URI' that begins with 'azureml://subscriptions'.")
+                print("You can find that URI under the 'Data->datastores-><your fileshare>->browse page in")
+                print("azure machine learning studio")
             self.__dstore_type = "file"
             self.__parse_file(input_uri)
 
@@ -261,17 +271,22 @@ class FileTransferClient:
     def __get_target_file_list(self, key:str = None):
         
         if self.__azmlfs:
-            try:
-                buffer = self.__azmlfs.glob(key+'*')
-                for name in buffer:
-                    if(key in name) and not ('.aml' in name):
-                        self.__target_files.append(name)
-                    else:
-                        
-                        pass
-            except Exception as e:
-                print(e)
-                print('Sorry, no files found with that folder path in the chosen data asset')
+            print('getfiles')
+           # try:
+            buffer = self.__azmlfs.glob(key+'**')
+            print("buffer")
+            print(buffer)
+            for name in buffer:
+                if(key in name) and not ('.aml' in name):
+                    self.__target_files.append(name)
+                else:
+                    
+                    pass
+
+                print(self.__target_files)
+            #except Exception as e:
+            #    print(e)
+            #    print('Sorry, no files found with that folder path in the chosen data asset')
         else:
             self.__how_did_you_get_here()
 
