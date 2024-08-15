@@ -135,15 +135,12 @@ class FileTransferClient:
         return dstore_type
     
     def __parse_blob(self, input_uri:str):
-        if('azureml' in input_uri):
-            print("Look like you pulled the 'DataStore URI' instead of the 'Storage URI'")
-            print("Azure has a lot of security related eccentricities. When pulling data from blobs")
-            print("please take care to use the 'Storage URI' that begins with 'https://<storage account>.blob.core.windows.net'.")
-        elif('https://' in input_uri):
-            split_path = input_uri.split('/')
-            self.__blob_uri = split_path[0]+"//"+split_path[2]
-            self.__container_name = split_path[3]
-            self.__cloud_folder_path = '/'.join(split_path[4:])
+
+    
+        split_path = input_uri.split('/')
+        self.__blob_uri = split_path[0]+"//"+split_path[2]
+        self.__container_name = split_path[3]
+        self.__cloud_folder_path = '/'.join(split_path[4:])
 
 
     def __parse_file(self, input_uri:str):
@@ -160,6 +157,11 @@ class FileTransferClient:
             print("Can't parse whether given uri is a path to a blob or file, please edit the names of folders in the path to remove the words 'fileshare', 'file.core', or 'blob' and try again")
             exit(1)
         elif blob:
+            if('azureml' in input_uri):
+                print("Look like you pulled the 'DataStore URI' instead of the 'Storage URI'")
+                print("Azure has a lot of security related eccentricities. When pulling data from blobs")
+                print("please take care to use the 'Storage URI' that begins with 'https://<storage account>.blob.core.windows.net'.")
+                exit(1)
             self.__dstore_type = "blob"
             self.__parse_blob(input_uri)
         elif file:
@@ -169,6 +171,7 @@ class FileTransferClient:
                 print("please take care to use the 'Datastore URI' that begins with 'azureml://subscriptions'.")
                 print("You can find that URI under the 'Data->datastores-><your fileshare>->browse page in")
                 print("azure machine learning studio")
+                exit(1)
             self.__dstore_type = "file"
             self.__parse_file(input_uri)
 
