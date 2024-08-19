@@ -58,7 +58,8 @@ class FileTransferClient:
         
         #try to create an as-of-yet unused ML Client
         try:
-            self.__ml_client = MLClient.from_config(credential=self.__creds)
+            pass
+            #self.__ml_client = MLClient.from_config(credential=self.__creds)
         except Exception as e:
             
             print("The system encountered the following error: {} \n Error establishing ML Client Obejct. Exiting.".format(e))
@@ -74,6 +75,8 @@ class FileTransferClient:
                 exit(1)
             self.__target_files = []
             self.__get_target_file_list(key = self.__cloud_folder_path)
+            
+
 
         else:
             print("blob/file logic failed")
@@ -199,7 +202,7 @@ class FileTransferClient:
            # try:
             buffer = self.__azmlfs.glob(key+'**')
             for name in buffer:
-                if(key in name) and not ('.aml' in name):
+                if(key in name) and not ('.aml' in name) and not(name[-1]=='/'):
                     self.__target_files.append(name)
                 else:
                     
@@ -224,9 +227,8 @@ class FileTransferClient:
         local_filename = os.path.join(self.__local_folder_path, *[self.__cloud_folder_path, upload_file])
         upload_file = filename+'.'+extension
         new_filename = os.path.join(self.__local_folder_path, *[self.__cloud_folder_path, upload_file])
-        if self.__dstore_type=='file':
-            os.rename(os.path.join(local_filename), os.path.join(new_filename))
-        print("New File name: "+upload_file)
+        os.rename(os.path.join(local_filename), os.path.join(new_filename))
+        
         return upload_file
     #endregion
     
@@ -312,7 +314,7 @@ class FileTransferClient:
                     fail_list.append(updated_upload_file)
             self.__azmlfs.end_transaction()
             if(len(fail_list)!=0):
-                print("Encountered an error during uploda. The following files could not be uploaded. Please try again")
+                print("Encountered an error during upload. The following files could not be uploaded. Please try again")
                 for file in fail_list:
                     print(file)
             else:
