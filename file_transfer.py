@@ -337,8 +337,8 @@ class FileTransferClient:
                             # Assuming there's a method like put_file for uploading
                             self.__azmlfs.put_file(rpath=os.path.join(destination_folder, upload_file), lpath=local_file_path)
                             print("Uploaded file: {}".format(upload_file))
-                            #remove checksum from the dictionary if upload is successful
-                            self.__file_checksums.pop(local_file_path)
+                            #update the checksum in case it changes again in teh same session
+                            self.__file_checksums[local_file_path] = self__compute_checksum_sha256(local_file_path)
                         except Exception as upload_error:
                             print(f"Failed to upload {upload_file}: {upload_error}")
                             fail_list.append(upload_file)
