@@ -331,17 +331,14 @@ class FileTransferClient:
                 if upload_file not in self.__file_checksums or self.__file_checksums[upload_file] != checksum:
                     cloud_file_path = os.path.join(destination_folder, upload_file)
                     is_existing_file = self.__azmlfs.isfile(cloud_file_path)
-                    print("File exists: {}".format(is_existing_file))
-                    print("local_path: {}".format(local_file_path))
-                    print("checksum: ")
-                    print(self.__file_checksums.get(local_file_path))
                     if not is_existing_file or (is_existing_file and self.__file_checksums.get(local_file_path, '') != checksum):
                         # Proceed with upload
                         try:
                             # Assuming there's a method like put_file for uploading
                             self.__azmlfs.put_file(rpath=os.path.join(destination_folder, upload_file), lpath=local_file_path)
-                            # Update the checksum in self.__file_checksums
-                            self.__file_checksums[upload_file] = checksum
+                            print("Uploaded file: {}".format(upload_file))
+                            #remove checksum from the dictionary if upload is successful
+                            self.__file_checksums.pop(local_file_path)
                         except Exception as upload_error:
                             print(f"Failed to upload {upload_file}: {upload_error}")
                             fail_list.append(upload_file)
