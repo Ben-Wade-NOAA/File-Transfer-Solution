@@ -109,6 +109,10 @@ class FileTransferClient:
         
     def __uri_parser(self, input_uri:str = None):
         
+        input_uri = input_uri.strip()
+        if " " in input_uri:
+            raise ValueError("Input URI contains whitespace. Please remove any whitespace from folder or filenames to remove this error.")
+        
         if("https://" in input_uri):
             print("Look like you pulled the 'DataStore URI' instead of the 'Storage URI'")
             print("Azure has a lot of security related eccentricities. When pulling data from azure")
