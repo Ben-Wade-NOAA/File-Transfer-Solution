@@ -6,6 +6,7 @@ If I pooched it, let me know
 
 import os
 import psutil
+import hashlib
 from sys import exit
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential, AzureCliCredential
@@ -40,7 +41,8 @@ class FileTransferClient:
         self.__cloud_folder_path = None
 
         self.__uri_parser(self.__input_uri)
-        
+        if not hasattr(self, '__file_checksums'):
+            self.__file_checksums = {}
         #make the destination folder
         if not os.path.exists(self.__local_folder_path):
             print("Target directory does not yet exist. Making target directory")
@@ -152,6 +154,9 @@ class FileTransferClient:
             print("Somehow, the script doesn't have read access to disk. I don't know how we got here...")
             exit(1)
             
+
+                
+            
         self.__total_disk /= self.__to_gb
         self.__used_disk /= self.__to_gb
         self.__free_disk /= self.__to_gb
@@ -261,6 +266,18 @@ class FileTransferClient:
     #endregion
 
     #region files
+    
+    
+    def __compute_checksum_sha256(self, file_path):
+        here = os.getcwd()
+        file_path = os.path.join(here, file_path)
+        print("Checking file: {}".format(file_path))
+
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
 
     def __transfer_from_file_to_compute(self):
         self.__get_available_disk()
@@ -271,11 +288,19 @@ class FileTransferClient:
                 self.__azmlfs.start_transaction()
                 for path in self.__target_files:
                     try:
+                        
                         self.__azmlfs.get_file(rpath = path, lpath= self.__local_folder_path)
+                        here = os.getcwd()
+                        local_path = os.path.join(here, self.__local_folder_path[2:], path)
+                        
+                        checksum = self.__compute_checksum_sha256(local_path)
+                        print("Checksum: {}".format(checksum))
+                        self.__file_checksums[local_path] = checksum
+                        print(self.__file_checksums.get(local_path))
+
                     except Exception as e:
                         print(e)
                 self.__azmlfs.end_transaction()
-
             except Exception as e:
                 self.__azmlfs.end_transaction()
                 print("Something went wrong with the file transfer from {} to {}. Please check the logs and try again".format(self.__container_name, self.__local_folder_path))
@@ -294,25 +319,35 @@ class FileTransferClient:
             fail_list = []
             self.__azmlfs.start_transaction()
             for upload_file in local_file_list:
-                is_existing_file = self.__azmlfs.isfile(os.path.join(destination_folder, upload_file))
-                if is_existing_file:
-                    print("A file with the provided name exists. The name is being changed to prevent data loss")
-                    updated_upload_file = self.__change_upload_file_name(upload_file=upload_file)
-                elif '-editied-' in upload_file:
-                    print("It looks like the system has already renamed this file. Please change the name of {} and try again.".format(upload_file))
-                    exit(1)
-                else:
-                    updated_upload_file = upload_file    
-                try:
-                    full_local_path = os.path.join(source_folder, updated_upload_file)
-                    full_dest_path = os.path.join(destination_folder, updated_upload_file)
-                    self.__azmlfs.put_file(lpath = full_local_path, rpath = full_dest_path)
-                except Exception as e:
-                    print(e)
-                    fail_list.append(updated_upload_file)
+                print("Uploading file: {}".format(upload_file))
+                
+                local_file_path = os.path.join(source_folder[2:], upload_file)
+                print(local_file_path)
+                checksum = self.__compute_checksum_sha256(local_file_path)
+                local_file_path = os.path.join(os.getcwd(), local_file_path)
+                # Check if the file exists in self.__file_checksums and if the checksum has changed
+                if upload_file not in self.__file_checksums or self.__file_checksums[upload_file] != checksum:
+                    cloud_file_path = os.path.join(destination_folder, upload_file)
+                    is_existing_file = self.__azmlfs.isfile(cloud_file_path)
+                    print("File exists: {}".format(is_existing_file))
+                    print("local_path: {}".format(local_file_path))
+                    print("checksum: ")
+                    print(self.__file_checksums.get(local_file_path))
+                    if not is_existing_file or (is_existing_file and self.__file_checksums.get(local_file_path, '') != checksum):
+                        # Proceed with upload
+                        try:
+                            # Assuming there's a method like put_file for uploading
+                            self.__azmlfs.put_file(rpath=os.path.join(destination_folder, upload_file), lpath=local_file_path)
+                            # Update the checksum in self.__file_checksums
+                            self.__file_checksums[upload_file] = checksum
+                        except Exception as upload_error:
+                            print(f"Failed to upload {upload_file}: {upload_error}")
+                            fail_list.append(upload_file)
+                        else:
+                            print("{} not uploaded because it already exists in the cloud and hasn't been changed".format(upload_file))
             self.__azmlfs.end_transaction()
             if(len(fail_list)!=0):
-                print("Encountered an error during uploda. The following files could not be uploaded. Please try again")
+                print("Encountered an error during upload. The following files could not be uploaded. Please try again")
                 for file in fail_list:
                     print(file)
             else:
